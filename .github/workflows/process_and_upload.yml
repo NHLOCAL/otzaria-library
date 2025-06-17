@@ -2,40 +2,39 @@
 
 name: Process and Upload to Hugging Face
 
-# טריגרים להרצת הפעולה
 on:
-  # הרצה אוטומטית בכל push לענף main
   push:
     branches:
-      - main  # או master, תלוי בשם הענף הראשי שלך
+      - main  # או master, בהתאם לענף הראשי שלך
   
-  # מאפשר הרצה ידנית מדף ה-Actions ב-GitHub
   workflow_dispatch:
 
 jobs:
   build-and-upload:
-    runs-on: ubuntu-latest  # שימוש במכונה וירטואלית של אובונטו
-
+    runs-on: ubuntu-latest
+    
     steps:
-      # 1. שכפול קוד המקור של הריפו שלך למכונה
-      - name: Checkout repository
+      # שלב 1: שכפול הריפו עם תמיכה מלאה ב-Git LFS
+      # הוספנו 'lfs: true' כדי להוריד את התוכן המלא של הקבצים ולא רק מצביעים.
+      - name: Checkout repository with LFS
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
-      # 2. הגדרת סביבת פייתון
+      # שלב 2: הגדרת סביבת פייתון, שימוש בגרסה 5 של הפעולה
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12' # ניתן להשתמש בגרסה אחרת
+          python-version: '3.10'
 
-      # 3. התקנת הספריות הנדרשות
+      # שלב 3: התקנת הספריות הנדרשות
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas datasets huggingface_hub
+          pip install datasets huggingface_hub
 
-      # 4. הרצת סקריפט הפייתון
+      # שלב 4: הרצת סקריפט העיבוד וההעלאה
       - name: Run processing and upload script
         env:
-          # העברת הטוקן כמשתנה סביבה לסקריפט
           HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
         run: python process_and_upload.py
