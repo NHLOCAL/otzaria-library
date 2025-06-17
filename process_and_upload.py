@@ -1,92 +1,80 @@
-# process_and_upload.py
+# process_and_upload.py (גרסה משופרת ויעילה)
 
 import os
-import pandas as pd
-from datasets import Dataset
+from datasets import Dataset, Features, Value
 from huggingface_hub import HfApi, login
 
 # --- הגדרות ---
-HF_DATASET_REPO = "NHLOCAL/judaic-texts-corpus" 
-# התיקיות שברצונך לעבד
+HF_DATASET_REPO = "NHLOCAL/judaic-texts-corpus"
 DIRECTORIES_TO_PROCESS = ["אוצריא", "extraBooks/אוצריא"]
-# טוקן שיגיע מ-GitHub Secrets
 HF_TOKEN = os.environ.get("HUGGINGFACE_TOKEN")
 
-def process_books():
+def book_generator():
     """
-    סורק את התיקיות, קורא את קבצי הטקסט ומארגן אותם לרשימה.
+    Generator שמניב (yields) ספר אחד בכל פעם, במקום לטעון הכל לזיכרון.
     """
-    all_books_data = []
-    
     for start_dir in DIRECTORIES_TO_PROCESS:
         if not os.path.isdir(start_dir):
             print(f"אזהרה: התיקייה '{start_dir}' לא קיימת. מדלג.")
             continue
             
-        # os.walk סורק את כל התיקיות והקבצים באופן רקורסיבי
         for root, _, files in os.walk(start_dir):
             for filename in files:
-                # נניח שכל הקבצים הם קבצי טקסט המייצגים ספרים
-                if filename.endswith(".txt"): # ניתן לשנות אם הסיומת אחרת
+                if filename.endswith(".txt"): # או סיומת אחרת רלוונטית
                     file_path = os.path.join(root, filename)
                     
                     try:
                         with open(file_path, 'r', encoding='utf-8') as f:
                             content = f.read()
                         
-                        # שם הספר הוא שם הקובץ ללא הסיומת
                         book_name = os.path.splitext(filename)[0]
-                        
-                        # הנתיב היחסי לתיקיית הבסיס יכול לשמש כקטגוריה
                         category_path = os.path.relpath(root, start_dir)
                         if category_path == ".":
-                           category_path = "" # אם הקובץ בתיקיית הבסיס
+                           category_path = ""
 
-                        book_data = {
+                        # "מניבים" את המידע החוצה במקום להוסיף לרשימה
+                        yield {
                             "book_name": book_name,
                             "content": content,
-                            "category": category_path.replace("\\", "/"), # נרמול לשימוש ב- /
+                            "category": category_path.replace("\\", "/"),
                             "source_path": file_path.replace("\\", "/")
                         }
-                        all_books_data.append(book_data)
                         
                     except Exception as e:
                         print(f"שגיאה בקריאת הקובץ {file_path}: {e}")
 
-    return all_books_data
-
-
 def main():
-    """
-    פונקציה ראשית: מעבדת, ממירה ומעלה ל-Hugging Face.
-    """
     if not HF_TOKEN:
         print("שגיאה: משתנה הסביבה HUGGINGFACE_TOKEN אינו מוגדר.")
-        print("ודא שהגדרת אותו ב-GitHub Secrets.")
         return
 
     print("מתחבר ל-Hugging Face Hub...")
     login(token=HF_TOKEN)
 
-    print("מתחיל עיבוד הספרים...")
-    books_data = process_books()
+    print("יוצר Dataset מה-generator (ביעילות זיכרון)...")
 
-    if not books_data:
-        print("לא נמצאו ספרים לעיבוד. יוצא.")
+    # הגדרת סכמה ברורה לדאטסט
+    features = Features({
+        'book_name': Value('string'),
+        'content': Value('string'),
+        'category': Value('string'),
+        'source_path': Value('string')
+    })
+
+    # יצירת ה-Dataset ישירות מה-generator
+    hf_dataset = Dataset.from_generator(book_generator, features=features)
+    
+    # בדיקה מהירה אם הדאטסט ריק
+    if not hf_dataset or len(hf_dataset) == 0:
+        print("לא נוצר דאטסט (אולי לא נמצאו קבצים). יוצא.")
         return
 
-    print(f"נמצאו ועובדו {len(books_data)} ספרים.")
-
-    # יצירת DataFrame של Pandas וממנו Dataset של Hugging Face
-    df = pd.DataFrame(books_data)
-    hf_dataset = Dataset.from_pandas(df)
-
+    print(f"נוצר דאטסט המכיל {len(hf_dataset)} ספרים.")
     print(f"מעלה את ה-Dataset ל: {HF_DATASET_REPO}...")
-    # העלאת ה-Dataset. אם הריפו לא קיים, הוא ייווצר
-    hf_dataset.push_to_hub(HF_DATASET_REPO, private=False) # שנה ל-True אם אתה רוצה שהמאגר יהיה פרטי
+    
+    hf_dataset.push_to_hub(HF_DATASET_REPO, private=False)
 
     print("ההעלאה הסתיימה בהצלחה!")
-
 
 if __name__ == "__main__":
     main()
